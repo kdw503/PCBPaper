@@ -1,0 +1,9 @@
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+LCSVD = "fda17f23-89d5-4117-bd1e-27859bb918b7"
+PenalizedComponentBlends = "763b936c-bf30-45dd-a23b-34a36bb21bc0"
+ProfileView = "c46f51b8-102a-5cf2-8d2c-8597cb0e0da7"
+TestData = "72c4b22c-bbb9-4377-8daa-6a9d06489e17"

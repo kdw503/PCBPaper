@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n \"^end$\" /c/Users/kdw76/.julia/dev/PenalizedComponentBlends/src/core.jl)",
+      "Read(//c/Users/kdw76/.julia/dev/PenalizedComponentBlends/**)",
+      "Bash(julia --project -e 'using Pkg; Pkg.status\\(\\)')",
+      "Bash(julia:*)"
+    ]
+  }
+}
