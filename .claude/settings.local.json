@@ -4,7 +4,9 @@
       "Bash(grep -n \"^end$\" /c/Users/kdw76/.julia/dev/PenalizedComponentBlends/src/core.jl)",
       "Read(//c/Users/kdw76/.julia/dev/PenalizedComponentBlends/**)",
       "Bash(julia --project -e 'using Pkg; Pkg.status\\(\\)')",
-      "Bash(julia:*)"
+      "Bash(julia:*)",
+      "mcp__julia__julia_eval",
+      "mcp__julia__julia_restart"
     ]
   }
 }
