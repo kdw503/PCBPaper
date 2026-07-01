@@ -15,7 +15,7 @@ using TestData
 using LCSVD
 
 # ── Load data ────────────────────────────────────────────────────────────────
-d = load(projectdir("scripts", "data", "exp4_obj_convergence_randn.jld2"))
+d = load(projectdir("scripts", "data", "exp4_obj_convergence_fakecells.jld2"))
 
 params        = d["params"]
 method_labels = d["method_labels"]
@@ -56,7 +56,7 @@ styles  = [:solid, :solid, :solid, :solid, :solid, :solid,
 
 fig = Figure(size = (1050, 540))
 yminlimit = minimum(minimum(fv) for fv in fvals_all) - 5
-ymaxlimit = yminlimit + (maximum(last(fv) for fv in fvals_all) - yminlimit) * 1.5
+ymaxlimit = maximum(maximum(fv) for fv in fvals_all) + 5 # yminlimit + (maximum(last(fv) for fv in fvals_all) - yminlimit) * 1.5
 # yminlimit = 10^2.881
 # ymaxlimit = 10^2.886
 markersize = 6
@@ -85,7 +85,7 @@ ax2 = Axis(fig[1, 2];
     xlabel         = "Outer iteration",
     ylabel         = "Exact L1 objective",
     title          = "Objective vs iteration",
-    limits         = ((0, 300), (yminlimit, ymaxlimit)),
+    limits         = (nothing, (yminlimit, ymaxlimit)),
     yscale         = log10,
     xticklabelsize = 12,
     yticklabelsize = 12,

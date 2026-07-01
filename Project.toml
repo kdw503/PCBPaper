@@ -2,11 +2,21 @@ name = "PCBPaper"
 
 [deps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+ColorTypes = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
+FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
+FixedPointNumbers = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+ImageMagick = "6218d12a-5da1-5696-b52f-db25d2ecc6d1"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LCSVD = "fda17f23-89d5-4117-bd1e-27859bb918b7"
 NAOMiSim = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 PenalizedComponentBlends = "763b936c-bf30-45dd-a23b-34a36bb21bc0"
 ProfileView = "c46f51b8-102a-5cf2-8d2c-8597cb0e0da7"
 TestData = "72c4b22c-bbb9-4377-8daa-6a9d06489e17"
+
+[compat]
+ColorTypes = "0.12"
+FileIO = "1.19"
+FixedPointNumbers = "0.8"
+ImageMagick = "1.4"

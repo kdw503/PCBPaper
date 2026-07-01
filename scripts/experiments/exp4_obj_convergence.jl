@@ -21,10 +21,10 @@ using LCSVD
 const METHODS = [
     :RelaxedL1_AD_LBFGS,
     :RelaxedL1_LBFGS,
-    :L1_AD_LBFGS,
-    :L1_LBFGS,
-    :L1_ADMM,
-    :L1_FISTA,
+    # # :L1_AD_LBFGS,
+    # # :L1_LBFGS,
+    # # :L1_ADMM,
+    # # :L1_FISTA,
     :rL1_SC_AD_SVRG,
     :rL1_SC_AD_SAGA,
     :rL1_SC_AD_LBFGS,
@@ -40,10 +40,10 @@ const METHODS = [
 const METHOD_LABELS = [
     "rL1 AD-LBFGS",
     "rL1 LBFGS",
-    "L1 AD-LBFGS",
-    "L1 LBFGS",
-    "L1 ADMM",
-    "L1 FISTA",
+    # # "L1 AD-LBFGS",
+    # # "L1 LBFGS",
+    # # "L1 ADMM",
+    # # "L1 FISTA",
     "AD-SVRG",
     "AD-SAGA",
     "AD-LBFGS",
@@ -68,8 +68,8 @@ params = Dict(
     :αₘ            => 1e-2,
     :αₙ            => 1e-2,
     :σ₀            => 2.0,
-    :r             => 0.95,
-    :maxiter       => 300,
+    :r             => 0.999,
+    :maxiter       => 3000,
     :inner_maxiter => 500,
     :tol           => 1e-12,
 )
@@ -87,7 +87,7 @@ if dataset == :fakecells
     X, imsz, lhT, ncs, gtnoc, datadic = load_data(dataset;
         sigma=sigma, imgsz=imgsz, lengthT=lengthT, SNR=SNR, bias=bias,
         useCalciumT=true, inhibitindices=inhibitindices,
-        issave=false, isload=false, gtincludebg=false,
+        issave=false, isload=true, gtincludebg=false,
         save_gtimg=false, save_maxSNR_X=false, save_X=false)
 elseif dataset == :randn
     @info "Dataset: $(dataset)"
@@ -101,9 +101,11 @@ gtW, gtH  = dataset == :fakecells ?
 
 figdir = projectdir("scripts", "figures", "pcb")
 mkpath(figdir)
+initmethod = :isvd
 
 results = map(METHODS) do method
-    res = pcb(X, p, k;
+    (; U, V, D, M, N) = pcb_init(X, p, k; initmethod=initmethod)
+    res = pcb(U, V, D, M, N, p, k;
         pcb_method    = method,
         αₘ            = αₘ,
         αₙ            = αₙ,
@@ -116,6 +118,59 @@ results = map(METHODS) do method
     )
     @info "$(rpad(string(method), 22)) → $(res.iterations) iters, " *
           "final fval = $(round(last(res.history.fvals); sigdigits=4))"
+#     if method ∉ [:RelaxedL1_AD_LBFGS, :RelaxedL1_LBFGS]
+#         @info "Run Relaxed L1 AD LCSVD again"
+#         res2 = pcb(U, V, D, res.M, res.N, p, k;
+#             pcb_method    = :rL1_SC_AD_SGD,
+#             nαₘ_in        = res.nαₘ,
+#             nαₙ_in        = res.nαₙ,
+#             σ₀            = σ₀,
+#             r             = r,
+#             σ2ₘ           = res.σ2ₘ,
+#             σ2ₙ           = res.σ2ₙ,
+#             maxiter       = maxiter,
+#             inner_maxiter = inner_maxiter,
+#             tol           = tol,
+#             track_history = true,
+#         )
+#         res2.history.times .+= res.history.times[end]
+#         append!(res.history.times, res2.history.times)
+#         append!(res.history.fvals, res2.history.fvals)
+# #        append!(res.history.hist_inner_iters, res2.history.hist_inner_iters)
+#         res3 = pcb(U, V, D, res2.M, res2.N, p, k;
+#             pcb_method    = :rL1_SC_AD_SGD,
+#             nαₘ_in        = res2.nαₘ,
+#             nαₙ_in        = res2.nαₙ,
+#             σ₀            = σ₀,
+#             r             = r,
+#             σ2ₘ           = res2.σ2ₘ,
+#             σ2ₙ           = res2.σ2ₙ,
+#             maxiter       = maxiter,
+#             inner_maxiter = inner_maxiter,
+#             tol           = tol,
+#             track_history = true,
+#         )
+#         res3.history.times .+= res.history.times[end]
+#         append!(res.history.times, res3.history.times)
+#         append!(res.history.fvals, res3.history.fvals)
+#         res4 = pcb(U, V, D, res3.M, res3.N, p, k;
+#             pcb_method    = :rL1_SC_AD_SGD,
+#             nαₘ_in        = res3.nαₘ,
+#             nαₙ_in        = res3.nαₙ,
+#             σ₀            = σ₀,
+#             r             = r,
+#             σ2ₘ           = res3.σ2ₘ,
+#             σ2ₙ           = res3.σ2ₙ,
+#             maxiter       = maxiter,
+#             inner_maxiter = inner_maxiter,
+#             tol           = tol,
+#             track_history = true,
+#         )
+#         res4.history.times .+= res.history.times[end]
+#         append!(res.history.times, res4.history.times)
+#         append!(res.history.fvals, res4.history.fvals)
+#     end
+
     W1, H1 = res.W, res.H
     LCSVD.normalizeW!(W1, H1)
     if dataset == :fakecells
@@ -146,3 +201,29 @@ jldsave(joinpath(datadir_, "exp4_obj_convergence_$(dataset).jld2");
 )
 
 @info "Saved → scripts/data/exp4_obj_convergence_$(dataset).jld2"
+
+# ── Save W images ─────────────────────────────────────────────────────────────
+figdir = projectdir("scripts", "figures", "pcb")
+mkpath(figdir)
+
+d = load(projectdir("scripts", "data", "exp4_obj_convergence_$(dataset).jld2"))
+params        = d["params"]
+method_labels = d["method_labels"]
+times_all     = d["times"]
+fvals_all     = d["fvals"]
+iters_all     = d["iters"]
+W_all         = d["W_all"]
+H_all         = d["H_all"]
+fv_all        = d["fv_all"]
+m, n, p       = d["m"], d["n"], d["p"]
+
+method_tags = METHOD_LABELS
+for (i, (iters,times,fv,W,H,tag)) in enumerate(zip(iters_all,times_all,fv_all,W_all,H_all,method_tags))
+    rt    = last(times)
+    fname = joinpath(figdir, "exp4_$(tag)_am$(αₘ)_an$(αₙ)_f$(fv)_it$(iters)_rt$(round(rt;digits=1))")
+    imsave_data(dataset, fname, W, H, imgsz, 100; saveH=false, verbose=false)
+end
+@info "Saved W images → scripts/figures/pcb/"
+
+# ── plot ─────────────────────────────────────────────────────────────
+include(projectdir("scripts", "experiments", "exp4_plot.jl"))

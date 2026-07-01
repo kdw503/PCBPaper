@@ -27,19 +27,19 @@ end
 const METHODS = [
     :RelaxedL1_AD_LBFGS,
     :RelaxedL1_LBFGS,
-    :L1_AD_LBFGS,
-    :L1_LBFGS,
-    :L1_ADMM,
-    :L1_FISTA,
+    :rL1_SC_AD_SGD,
+    :rL1_SC_AD_ADAM,
+    :rL1_SC_SGD,
+    :rL1_SC_ADAM,
 ]
 
 const METHOD_LABELS = [
     "rL1 AD-LBFGS",
     "rL1 LBFGS",
-    "L1 AD-LBFGS",
-    "L1 LBFGS",
-    "L1 ADMM",
-    "L1 FISTA",
+    "AD-SGD",
+    "AD-ADAM",
+    "Joint-SGD",
+    "Joint-ADAM",
 ]
 
 params = Dict(
@@ -47,18 +47,19 @@ params = Dict(
     :imgsz         => (12, 12),
     :lengthT       => 100000,
     :noc           => 72,
+    :k             => 72,  # SVD rank
     :αₘ            => 0,
-    :αₙ            => 5e-4, # 1e-2,
+    :αₙ            => 5e-1, # 1e-2,
     :σ₀            => 1.0, # 1.0,
     :r             => 0.3, # 0.95,
-    :maxiter       => 2, # 300,
-    :inner_maxiter => 2, # 500,
+    :maxiter       => 300, # 300,
+    :inner_maxiter => 500, # 500,
     :tol           => 1e-10,
     :inner_tol     => 1e-10,
 )
 
 # ── Data ─────────────────────────────────────────────────────────────────────
-@unpack dataset, imgsz, lengthT, noc, αₘ, αₙ, σ₀, r, maxiter, inner_maxiter, tol, inner_tol = params
+@unpack dataset, imgsz, lengthT, noc, k, αₘ, αₙ, σ₀, r, maxiter, inner_maxiter, tol, inner_tol = params
 
 patch_size = imgsz[1]
 
@@ -73,10 +74,12 @@ gtW, gtH  = dataset == :fakecells ?
 
 figdir = projectdir("scripts", "figures", "pcb")
 mkpath(figdir)
+initmethod = :isvd
 
 results = map(METHODS) do method
     @info "$(rpad(string(method), 22))"
-    res = pcb(X, p, k;
+    (; U, V, D, M, N) = pcb_init(X, p, k; initmethod=initmethod)
+    res = pcb(U, V, D, M, N, p, k;
         pcb_method    = method,
         αₘ            = αₘ,
         αₙ            = αₙ,
@@ -90,6 +93,7 @@ results = map(METHODS) do method
     )
     @info "$(rpad(string(method), 22)) → $(res.iterations) iters, " *
           "final fval = $(round(last(res.history.fvals); sigdigits=4))"
+
     W1, H1 = res.W, res.H
     LCSVD.normalizeW!(W1, H1)
     if dataset == :fakecells
@@ -106,7 +110,8 @@ end
 datadir_ = projectdir("scripts", "data")
 mkpath(datadir_)
 
-jldsave(joinpath(datadir_, "exp6_sparse_coding_$(dataset).jld2");
+fname="exp6_sparse_coding_$(dataset)_ah$(αₙ)_imiter$(inner_maxiter)_long_nstep.jld2"
+jldsave(joinpath(datadir_, fname);
     params,
     m, n, p,
     method_names  = string.(METHODS),
@@ -119,8 +124,8 @@ jldsave(joinpath(datadir_, "exp6_sparse_coding_$(dataset).jld2");
     fv_all = [r.fv                for r in results],
 )
 
-@info "Saved → scripts/data/exp6_sparse_coding_$(dataset).jld2"
+@info "Saved → $(fname)"
 
 # ── plot ─────────────────────────────────────────────────────────────────
-d = load(projectdir("scripts", "data", "exp6_sparse_coding_$(dataset).jld2"))
+d = load(projectdir("scripts", "data", fname))
 include(projectdir("scripts", "experiments", "exp6_plot.jl"))

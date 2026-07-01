@@ -15,62 +15,7 @@ using NAOMiSim
 using LinearAlgebra, Random, Statistics
 using JLD2
 using CairoMakie
-
-# ── Helper functions ──────────────────────────────────────────────────────────
-function add_awgn(X::AbstractMatrix, snr_db::Real)
-    P = mean(abs2, X)
-    X .+ sqrt(P / 10^(snr_db / 10)) .* randn(eltype(X), size(X))
-end
-
-"""Double-exponential calcium transient kernel (GCaMP-like)."""
-function make_soma_activity(K, nt, n_spikes;
-                             tau_rise=3f0, tau_decay=60f0, amp=4f0, seed=18)
-    Random.seed!(seed)
-    ker = Float32.([exp(-t / tau_decay) - exp(-t / tau_rise) for t in 0:149])
-    ker ./= maximum(ker)
-    soma = fill(1f0, K, nt)
-    for k in 1:K
-        times = sort(randperm(nt - 80)[1:n_spikes] .+ 40)
-        for t0 in times
-            len = min(length(ker), nt - t0 + 1)
-            soma[k, t0:t0+len-1] .+= amp .* ker[1:len]
-        end
-    end
-    soma
-end
-
-"""Set nucleus voxels to nuc_val in gp_vals (makes dark nuclear hole)."""
-function apply_nucleus_darkening!(vol_out, nuc_val=0f0)
-    K = size(vol_out.locs, 1)
-    for kk in 1:K
-        gp_nuc_kk = vol_out.gp_nuc[kk]
-        isnothing(gp_nuc_kk) && continue
-        nuc_idxs = gp_nuc_kk[1]
-        isempty(nuc_idxs) && continue
-        nuc_set  = Set(nuc_idxs)
-        soma_idxs = vol_out.gp_vals[kk][1]
-        soma_vals = vol_out.gp_vals[kk][2]
-        for ii in eachindex(soma_idxs)
-            soma_idxs[ii] in nuc_set && (soma_vals[ii] = nuc_val)
-        end
-    end
-end
-
-"""Set all soma voxel fluorescence to soma_val (uniform cytoplasm)."""
-function make_uniform_soma!(vol_out, soma_val=1f0, nuc_val=0f0)
-    for kk in 1:size(vol_out.locs, 1)
-        vol_out.gp_vals[kk][2] .= soma_val
-    end
-    apply_nucleus_darkening!(vol_out, nuc_val)
-end
-
-"""Add a white border around each panel image."""
-function add_border(img::AbstractMatrix, bw::Int=1, val=maximum(img))
-    h, w = size(img)
-    out  = fill(Float64(val), h + 2bw, w + 2bw)
-    out[bw+1:bw+h, bw+1:bw+w] .= img
-    out
-end
+using FileIO, ImageMagick, ColorTypes, FixedPointNumbers
 
 # ── Parameters ────────────────────────────────────────────────────────────────
 prefix = "naomi_small"
@@ -96,13 +41,14 @@ params = Dict(
     :n_spikes    => 12,              # number of spikes per neuron over the recording
     :tau_rise    => 3,               # calcium transient rise time (frames)
     :tau_decay   => 60,              # calcium transient decay time (frames; ~2s at 30Hz)
+    :kernel_mult => 6,                # kernel support length = kernel_mult * tau_decay frames
     :spike_amp   => 4.0,             # spike amplitude (ΔF/F)
     :scale       => 4,               # display upscale factor for saved figures (px per data pixel)
 )
 
 @unpack seed, N_neur, vol_sz, vol_depth, min_dist, avg_rad, nuc_rad, vres,
         nt, dt, prot, vasc_flag, psf_type, sigma0, pavg, scan_buff, sfrac,
-        n_spikes, tau_rise, tau_decay, spike_amp, scale = params
+        n_spikes, tau_rise, tau_decay, kernel_mult, spike_amp, scale = params
 
 Random.seed!(seed)
 
@@ -114,7 +60,7 @@ mkpath(datadir_)
 # _prescan_params covers the remaining params that affect pre-scan steps.
 _prescan_params = Dict(k => params[k] for k in [
     :seed, :min_dist, :nuc_rad, :vasc_flag, :vol_depth, :sfrac,
-    :psf_type, :n_spikes, :tau_rise, :tau_decay, :spike_amp, :nt, :dt, :prot,
+    :psf_type, :n_spikes, :tau_rise, :tau_decay, :kernel_mult, :spike_amp, :nt, :dt, :prot,
 ])
 _sz_str        = join(round.(Int, vol_sz[1:2]), "x")
 _prescan_fname = "$(prefix)_prescan_N$(N_neur)_sz$(_sz_str)_nt$(nt)_r$(avg_rad)_vres$(vres).jld2"
@@ -179,6 +125,7 @@ else
     soma_act   = make_soma_activity(K, nt, n_spikes;
                                     tau_rise=Float32(tau_rise),
                                     tau_decay=Float32(tau_decay),
+                                    kernel_mult=kernel_mult,
                                     amp=Float32(spike_amp), seed=seed)
     neur_act   = (soma=soma_act, dend=fill(1f0, K, nt), bg=fill(1f0, K, nt))
     spike_opts = SpikeOpts(; K, nt, dt, prot, N_bg=0, axonflag=false)
@@ -227,13 +174,9 @@ else
     vmax_w  = maximum(max.(W_gt_n, 0.))
     panels  = [add_border(repeat(reshape(W_gt_n[:,k], N1, N2), inner=(scale,scale)), 1, vmax_w)
             for k in 1:K]
-    W_canvas = vcat(panels...)
-    fig_wgt = Figure(size=(size(W_canvas,1), size(W_canvas,2)), figure_padding=0)
-    ax_wgt  = Axis(fig_wgt[1,1]); hidedecorations!(ax_wgt); hidespines!(ax_wgt)
-    colsize!(fig_wgt.layout,1,Fixed(size(W_canvas,1)))
-    rowsize!(fig_wgt.layout,1,Fixed(size(W_canvas,2)))
-    heatmap!(ax_wgt, W_canvas; colormap=:grays, colorrange=(0., vmax_w))
-    save(joinpath(figdir, "$(prefix)_N$(N_neur)_sz$(_sz_str)_nt$(nt)_r$(avg_rad)_vres$(vres)_W_gt.png"), fig_wgt)
+    W_canvas = hcat(panels...)
+    save_gray_png(joinpath(figdir, "$(prefix)_N$(N_neur)_sz$(_sz_str)_nt$(nt)_r$(avg_rad)_vres$(vres)_W_gt.png"),
+                   W_canvas, 0., vmax_w)
     @info "Saved → $(prefix)_N$(N_neur)_sz$(_sz_str)_nt$(nt)_r$(avg_rad)_vres$(vres)_W_gt.png"
 
     # H_gt_n: power-scaled activity traces, one per neuron
@@ -316,11 +259,8 @@ p_hi = quantile(vec(X_noisy), 0.999)
 
 # Correlation image
 c_lo, c_hi = extrema(corr_img)
-fig_corr = Figure(size=(N1*scale, N2*scale), figure_padding=0)
-ax_corr  = Axis(fig_corr[1,1]); hidedecorations!(ax_corr); hidespines!(ax_corr)
-colsize!(fig_corr.layout,1,Fixed(N1*scale)); rowsize!(fig_corr.layout,1,Fixed(N2*scale))
-heatmap!(ax_corr, corr_img; colormap=:grays, colorrange=(c_lo, c_hi))
-save(joinpath(figdir, "$(prefix)_corr_image_pavg$(pavg)_$(actual_snr_str).png"), fig_corr)
+save_gray_png(joinpath(figdir, "$(prefix)_corr_image_pavg$(pavg)_$(actual_snr_str).png"),
+               corr_img, c_lo, c_hi; scale)
 @info "Saved → $(prefix)_corr_image_pavg$(pavg)_$(actual_snr_str).png"
 
 # ── GIF: axes-free grayscale movie around peak activity ──────────────────────
@@ -329,17 +269,13 @@ mean_act   = vec(mean(max.(reshape(X_clean, N1, N2, Nt), 0.); dims=(1,2)))
 pk_gif     = argmax(mean_act)
 win_s      = max(1, pk_gif - 50)
 win_e      = min(Nt, win_s + 700)
-frames_gif = win_s:5:win_e
+gif_fps    = 8
+gif_dur_s  = 20
+frames_gif = 1:max(1, round(Int, nt / (gif_dur_s * gif_fps))):nt
 
 gif_lo = quantile(vec(X_noisy_ph), 0.005)
 gif_hi = quantile(vec(X_noisy_ph), 0.999)
 
-fig_gif = Figure(size=(150, 150), figure_padding=0)
-ax_gif  = Axis(fig_gif[1,1]); hidedecorations!(ax_gif); hidespines!(ax_gif)
-colsize!(fig_gif.layout, 1, Fixed(150)); rowsize!(fig_gif.layout, 1, Fixed(150))
-hm_gif  = heatmap!(ax_gif, F_noisy3d[:,:,win_s]; colormap=:grays,
-                    colorrange=(gif_lo, gif_hi))
-record(fig_gif, joinpath(figdir, "$(prefix)_movie_pavg$(pavg)_$(actual_snr_str).gif"), frames_gif; framerate=8) do t
-    hm_gif[1] = F_noisy3d[:,:,t]
-end
-@info "Saved → $(prefix)_movie_pavg$(pavg)_$(actual_snr_str).gif  ($(length(frames_gif)) frames @ 8fps)"
+save_gray_gif(joinpath(figdir, "$(prefix)_movie_pavg$(pavg)_$(actual_snr_str).gif"),
+               F_noisy3d, frames_gif, gif_lo, gif_hi; scale, fps=gif_fps)
+@info "Saved → $(prefix)_movie_pavg$(pavg)_$(actual_snr_str).gif  ($(length(frames_gif)) frames @ $(gif_fps)fps ≈ $(round(length(frames_gif)/gif_fps; digits=1))s)"
